@@ -1,6 +1,6 @@
 PROGRAM TEST
   USE ISO_FORTRAN_ENV, ONLY: REAL64
-  USE QUICKSELECT
+  USE FAST_SELECT
   IMPLICIT NONE
 
   ! Initialize a random array of numbers
