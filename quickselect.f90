@@ -136,15 +136,23 @@ CONTAINS
   ! implementation of the select method. This method also does not
   ! implement the optimal average case optimizations, it *always*
   ! identifies a pivot value via the median-of-medians method.
-  RECURSIVE SUBROUTINE SELECTR(VALUES, INDEX)
+  RECURSIVE SUBROUTINE SELECTR(VALUES, INDEX, RANDOM)
     REAL(KIND=REAL64), DIMENSION(:), INTENT(INOUT) :: VALUES    
     INTEGER, INTENT(IN) :: INDEX
+    LOGICAL, INTENT(IN), OPTIONAL :: RANDOM
     ! Local variables
     INTEGER :: PIVOT, I
     REAL(KIND=REAL64) :: PIVOT_VALUE
+    LOGICAL :: RAND_PIVOT
+    ! Pick a pivot depending on strategy.
+    IF (PRESENT(RANDOM)) THEN ; RAND_PIVOT = RANDOM
+    ELSE                      ; RAND_PIVOT = .TRUE.
+    END IF
     IF (SIZE(VALUES) .EQ. 1) RETURN
-    PIVOT = MEDIAN_OF_MEDIANS(VALUES)
-    ! PIVOT = SIZE(VALUES) / 2
+    ! Compute the pivot value.
+    IF (RAND_PIVOT) THEN ; PIVOT = SIZE(VALUES) / 2
+    ELSE                 ; PIVOT = MEDIAN_OF_MEDIANS(VALUES)
+    END IF
     PIVOT_VALUE = VALUES(PIVOT)
     I = PARTITION(VALUES, PIVOT, INDEX)
     ! Recurse, calling SELECT on the half of VALUES that contains INDEX.
@@ -153,5 +161,56 @@ CONTAINS
     ELSE                        ; CALL SELECTR(VALUES(:I), INDEX)
     END IF
   END SUBROUTINE SELECTR
+
+
+  ! Given an unordered list of values, sort the values such that the
+  ! element at VALUES(INDEX) has rank INDEX, such that all preceding
+  ! numbers are smaller or equal and all following numbers are greater
+  ! or equal.
+  ! 
+  ! The "R" at the end is for 'recursive', because this is a recursive
+  ! implementation of the select method. This method also does not
+  ! implement the optimal average case optimizations, it *always*
+  ! identifies a pivot value via the median-of-medians method.
+  SUBROUTINE SELECT(VALUES, INDEX, ALLOWANCE)
+    REAL(KIND=REAL64), DIMENSION(:), INTENT(INOUT) :: VALUES    
+    INTEGER, INTENT(IN) :: INDEX
+    REAL(KIND=REAL64), INTENT(IN), OPTIONAL :: ALLOWANCE
+    ! Local variables
+    INTEGER :: PIVOT, I, SEARCHED, FIRST, LAST
+    REAL(KIND=REAL64) :: PIVOT_VALUE, LOCAL_ALLOWANCE
+    LOGICAL :: RANDOM_PIVOT
+    ! Handle assignment of 'allowance' for switch to median-of-medians.
+    IF (PRESENT(ALLOWANCE)) THEN ; LOCAL_ALLOWANCE = ALLOWANCE
+    ELSE                         ; LOCAL_ALLOWANCE = 10.0_REAL64
+    END IF
+    ! Initialize constants for algorithm.
+    FIRST = 1
+    LAST = SIZE(VALUES)
+    RANDOM_PIVOT = LOCAL_ALLOWANCE .GT. 0.0
+    SEARCHED = 0
+    ! Loop until the index is found.
+    DO WHILE (LAST - FIRST > 0)
+       ! Compute the pivot value.
+       IF (RANDOM_PIVOT) THEN ; PIVOT = (FIRST + LAST) / 2
+       ELSE                   ; PIVOT = MEDIAN_OF_MEDIANS(VALUES(FIRST:LAST))
+       END IF
+       PIVOT_VALUE = VALUES(PIVOT)
+       ! Partition the data.
+       I = PARTITION(VALUES(FIRST:LAST), PIVOT - FIRST + 1, INDEX - FIRST + 1)
+       I = I + FIRST - 1
+       ! Update the record of the amount of data searched.
+       IF (RANDOM_PIVOT) SEARCHED = SEARCHED + (LAST - FIRST) + 1
+       ! If the algorithm is done (partition found the element), then
+       ! return, otherwise update 'FIRST' or 'LAST' depending on partition.
+       IF ((I .EQ. INDEX) .AND. (VALUES(I) .EQ. PIVOT_VALUE)) THEN ; RETURN
+       ELSE IF (I .LT. INDEX) THEN ; FIRST = I+1
+       ELSE                        ; LAST = I
+       END IF
+       ! If the amount searched has grown too large, switch to median-pivot.
+       IF (RANDOM_PIVOT) RANDOM_PIVOT = (SEARCHED .LT. LOCAL_ALLOWANCE * SIZE(VALUES))
+    END DO
+  END SUBROUTINE SELECT
+
 
 END MODULE QUICKSELECT

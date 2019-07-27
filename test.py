@@ -76,38 +76,60 @@ def _test_selectr():
         assert(v[i-1] == true_v[i-1])
 
 
+def _test_select():
+    # Case 1
+    v = np.array([1, 4, 3, 1, 3, 5], dtype=float)
+    i = 1
+    qs.select(v, i)
+    assert(v[i-1] == 1)
+    # Case 2
+    v = np.array([1, 4, 3, 3, 1, 5], dtype=float)
+    i = 2
+    qs.select(v, i)
+    assert(v[i-1] == 1)
+    # Case 3
+    v = np.array([1, 4, 5, 3, 1, 3], dtype=float)
+    i = 3
+    qs.select(v, i)
+    assert(v[i-1] == 3)
+    # Case 4
+    v = np.array([1, 4, 5, 3, 1, 3], dtype=float)
+    i = 5
+    qs.select(v, i)
+    assert(v[i-1] == 4)
+    # Case 5
+    for i in range(1, 7):
+        true_v = np.array([1, 1, 3, 3, 4, 5], dtype=float)
+        v = np.array([1, 1, 3, 3, 4, 5], dtype=float)
+        qs.select(v, i)
+        assert(v[i-1] == true_v[i-1])
+
 _test_bubble_sort()
 _test_partition()
 _test_selectr()
+_test_select()
+
+from util.system import Timer
+t = Timer()
+size = 1000
+print("Finding median..")
+
+print()
+np.random.seed(0)
+v = np.random.random(size=size)
+t.start()
+qs.select(v, len(v)//2)
+t.stop()
+print(v[:10])
+print("QS Time:", t())
 
 
-
-
-
-# This function rearranges a set of provided points into a vantage
-# point tree and returns the split radius and shell size of all nodes
-# in the tree on output.
-# 
-# The tree is stored implicitly with each 
-# 
-# Arguments:
-#   points    -- matrix of floats (D x N)
-#   leaf_size -- positive integer determining points per leaf node.
-#   random    -- method for determining center, True -> random selection,
-#                False -> point furthest from center of mass.
-# 
-# Returns:
-#   points -- matrix of floats (D x N)
-#   splits -- vector of floats for non-leaf node split radii (N)
-#   shells -- vector of floats for node outer shell distance (N)
-def build_vp_tree(points, leaf_size=10, random=True):
-    
-    if not random:
-        # Compute the center of mass and make it the first point.
-        pass
-    return points, splits, shells
-
-
- 
-   
+print()
+np.random.seed(0)
+v = np.random.random(size=size)
+t.start()
+v.partition(len(v)//2)
+t.stop()
+print(v[:10])
+print("NP Time:", t())
 
