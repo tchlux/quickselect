@@ -5,6 +5,180 @@ MODULE FAST_SELECT
 CONTAINS
 
   ! ------------------------------------------------------------------
+  !                 FastSelect method (via TCH Lux)
+  ! ------------------------------------------------------------------
+
+  ! Given VALUES list of numbers, rearrange the elements of VALUES
+  ! such that the element at index K has rank K (holds its same
+  ! location as if all of VALUES were sorted).
+  ! 
+  ! This algorithm uses the same conceptual approach as Floyd-Rivest,
+  ! but instead a standard-deviation based selection of bounds for
+  ! recursion, a rank-based method is used to pick the subset of
+  ! values that is searched. This simplifies the code and improves
+  ! interpretability, while achieving the same tunable performance.
+  ! 
+  ! Arguments:
+  ! 
+  !   VALUES   --  A 1D array of real numbers.
+  !   K        --  A positive integer for the rank index about which
+  !                VALUES should be rearranged.
+  ! Optional:
+  ! 
+  !   DIVISOR  --  A positive integer >= 2 that represents the
+  !                division factor used for large VALUES arrays.
+  !   MAX_SIZE --  An integer >= DIVISOR that represents the largest
+  !                sized VALUES for which the worst-case pivot value
+  !                selection is tolerable. A worst-case pivot causes
+  !                O( SIZE(VALUES)^2 ) runtime. This value should be
+  !                determined heuristically based on compute hardware.
+  ! 
+  ! Output:
+  ! 
+  !   The elements of the array VALUES are rearranged such that the
+  !   element at position VALUES(K) is in the same location it would
+  !   be if all of VALUES were in sorted order. Also known as,
+  !   VALUES(K) has rank K.
+  ! 
+  RECURSIVE SUBROUTINE SELECT(VALUES, K, DIVISOR, MAX_SIZE)
+    ! Arguments
+    REAL(KIND=REAL64), INTENT(INOUT), DIMENSION(:) :: VALUES
+    INTEGER, INTENT(IN) :: K
+    INTEGER, INTENT(IN), OPTIONAL :: DIVISOR, MAX_SIZE
+    ! Locals
+    INTEGER :: LEFT, RIGHT, L, R, MS, D
+    REAL(KIND=REAL64) :: P
+    ! Initialize the divisor (for making subsets).
+    IF (PRESENT(DIVISOR)) THEN ; D = DIVISOR
+    ELSE IF (SIZE(VALUES) .GE. 2**23) THEN ; D = 2**5
+    ELSE IF (SIZE(VALUES) .GE. 2**20) THEN ; D = 2**3
+    ELSE                                   ; D = 2**2
+    END IF
+    ! Initialize the max size (before subsets are created).
+    IF (PRESENT(MAX_SIZE)) THEN ; MS = MAX_SIZE
+    ELSE                        ; MS = 2**10
+    END IF
+    ! Initialize LEFT and RIGHT to be the entire array.
+    LEFT = 1
+    RIGHT = SIZE(VALUES)
+    ! Loop until done finding the K-th element.
+    DO WHILE (LEFT .LT. RIGHT)
+       ! Use SELECT recursively to improve the quality of the
+       ! selected pivot value for large arrays.
+       IF (RIGHT - LEFT .GT. MS) THEN
+          ! Compute how many elements should be left and right of K
+          ! to maintain the same percentile in a subset.
+          L = K - K / D
+          R = L + (SIZE(VALUES) / D)
+          ! Perform fast select on an array a fraction of the size about K.
+          CALL SELECT(VALUES(L:R), K - L + 1, DIVISOR, MAX_SIZE)
+       END IF
+       ! Pick a partition element at position K.
+       P = VALUES(K)
+       L = LEFT
+       R = RIGHT
+       ! Move the partition element to the front of the list.
+       CALL SWAP(VALUES(LEFT), VALUES(K))
+       ! Pre-swap the left and right elements (temporarily putting a
+       ! larger element on the left) before starting the partition loop.
+       IF (VALUES(RIGHT) .GT. P) CALL SWAP(VALUES(LEFT), VALUES(RIGHT))
+       ! Now partition the elements about the pivot value "T".
+       DO WHILE (L .LT. R)
+          CALL SWAP(VALUES(L), VALUES(R))
+          L = L + 1
+          R = R - 1
+          DO WHILE (VALUES(L) .LT. P) ; L = L + 1 ; END DO
+          DO WHILE (VALUES(R) .GT. P) ; R = R - 1 ; END DO
+       END DO
+       ! Place the pivot element back into its appropriate place.
+       IF (VALUES(LEFT) .EQ. P) THEN
+          CALL SWAP(VALUES(LEFT), VALUES(R))
+       ELSE
+          R = R + 1
+          CALL SWAP(VALUES(R), VALUES(RIGHT))
+       END IF
+       ! adjust left and right towards the boundaries of the subset
+       ! containing the (k - left + 1)th smallest element
+       IF (R .LE. K) LEFT = R + 1
+       IF (K .LE. R) RIGHT = R - 1
+    END DO
+  END SUBROUTINE SELECT
+
+
+  ! ------------------------------------------------------------------
+  !                 Floyd-Rivest method for select
+  ! ------------------------------------------------------------------
+
+  ! left is the left index for the interval
+  ! right is the right index for the interval
+  ! k is the desired index value, where array[k] is the (k+1)th smallest element when left = 0
+  RECURSIVE SUBROUTINE FLOYD_RIVEST(ARRAY, K, L, R)
+    ! Arguments
+    REAL(KIND=REAL64), INTENT(INOUT), DIMENSION(:) :: ARRAY
+    INTEGER, INTENT(IN) :: K
+    INTEGER, INTENT(IN), OPTIONAL :: L, R
+    ! Locals
+    INTEGER :: I, J, NEWLEFT, NEWRIGHT, LEFT, RIGHT
+    REAL(KIND=REAL64) :: N, Z, S, SD, T
+    ! Handle "L" optional.
+    IF (PRESENT(L)) THEN ; LEFT = L
+    ELSE                 ; LEFT = 1
+    END IF
+    ! Handle "R" optional.
+    IF (PRESENT(R)) THEN ; RIGHT = R
+    ELSE                 ; RIGHT = SIZE(ARRAY)
+    END IF
+    ! Loop until done finding the 'k'th element.
+    DO WHILE (RIGHT .GT. LEFT)
+       ! use select recursively to sample a smaller set of size s
+       ! the arbitrary constants 600 and 0.5 are used in the original
+       ! version to minimize execution time
+       IF (RIGHT - LEFT .GT. 600) THEN
+          N = RIGHT - LEFT + 1
+          I = K - LEFT + 1
+          Z = N
+          Z = LOG(Z)
+          S = 0.5 * EXP(2 * Z/3)
+          SD = 0.5 * SQRT(Z * S * (N - S)/N)
+          IF (I .LT. N/2) SD = -SD
+          NEWLEFT = MAX(REAL(LEFT,REAL64), K - I * S/N + SD)
+          NEWRIGHT = MIN(REAL(RIGHT,REAL64), K + (N - I) * S/N + SD)
+          CALL FLOYD_RIVEST(ARRAY, K, NEWLEFT, NEWRIGHT)
+       END if
+       ! Pick a partition element from position "K".
+       T = ARRAY(K)
+       ! Initialize I and J to LEFT and RIGHT.
+       I = LEFT
+       J = RIGHT
+       ! Move the partition element to the front of the list.
+       CALL SWAP(ARRAY(LEFT), ARRAY(K))
+       ! Pre-swap the left and right elements (temporarily putting a
+       ! larger element on the left) before starting the partition loop.
+       IF (ARRAY(RIGHT) .GT. T) CALL SWAP(ARRAY(LEFT), ARRAY(RIGHT))
+       ! Now partition the elements about the pivot value "T".
+       DO WHILE (I .LT. J)
+          CALL SWAP(ARRAY(I), ARRAY(J))
+          I = I + 1
+          J = J - 1
+          DO WHILE (ARRAY(I) .LT. T) ; I = I + 1 ; END DO
+          DO WHILE (ARRAY(J) .GT. T) ; J = J - 1 ; END DO
+       END DO
+       ! Place the pivot element back into its appropriate place.
+       IF (ARRAY(LEFT) .EQ. T) THEN
+          CALL SWAP(ARRAY(LEFT), ARRAY(J))
+       ELSE
+          J = J + 1
+          CALL SWAP(ARRAY(J), ARRAY(RIGHT))
+       END IF
+       ! adjust left and right towards the boundaries of the subset
+       ! containing the (k - left + 1)th smallest element
+       IF (J .LE. K) LEFT = J + 1
+       IF (K .LE. J) RIGHT = J - 1
+    END DO
+  END SUBROUTINE FLOYD_RIVEST
+
+
+  ! ------------------------------------------------------------------
   !                Introselect and associated functions
   ! ------------------------------------------------------------------
 
@@ -178,180 +352,6 @@ CONTAINS
        IF (RANDOM_PIVOT) RANDOM_PIVOT = (SEARCHED .LT. LOCAL_ALLOWANCE * SIZE(VALUES))
     END DO
   END SUBROUTINE INTROSELECT
-
-
-  ! ------------------------------------------------------------------
-  !                 Floyd-Rivest method for select
-  ! ------------------------------------------------------------------
-
-  ! left is the left index for the interval
-  ! right is the right index for the interval
-  ! k is the desired index value, where array[k] is the (k+1)th smallest element when left = 0
-  RECURSIVE SUBROUTINE FLOYD_RIVEST(ARRAY, K, L, R)
-    ! Arguments
-    REAL(KIND=REAL64), INTENT(INOUT), DIMENSION(:) :: ARRAY
-    INTEGER, INTENT(IN) :: K
-    INTEGER, INTENT(IN), OPTIONAL :: L, R
-    ! Locals
-    INTEGER :: I, J, NEWLEFT, NEWRIGHT, LEFT, RIGHT
-    REAL(KIND=REAL64) :: N, Z, S, SD, T
-    ! Handle "L" optional.
-    IF (PRESENT(L)) THEN ; LEFT = L
-    ELSE                 ; LEFT = 1
-    END IF
-    ! Handle "R" optional.
-    IF (PRESENT(R)) THEN ; RIGHT = R
-    ELSE                 ; RIGHT = SIZE(ARRAY)
-    END IF
-    ! Loop until done finding the 'k'th element.
-    DO WHILE (RIGHT .GT. LEFT)
-       ! use select recursively to sample a smaller set of size s
-       ! the arbitrary constants 600 and 0.5 are used in the original
-       ! version to minimize execution time
-       IF (RIGHT - LEFT .GT. 600) THEN
-          N = RIGHT - LEFT + 1
-          I = K - LEFT + 1
-          Z = N
-          Z = LOG(Z)
-          S = 0.5 * EXP(2 * Z/3)
-          SD = 0.5 * SQRT(Z * S * (N - S)/N)
-          IF (I .LT. N/2) SD = -SD
-          NEWLEFT = MAX(REAL(LEFT,REAL64), K - I * S/N + SD)
-          NEWRIGHT = MIN(REAL(RIGHT,REAL64), K + (N - I) * S/N + SD)
-          CALL FLOYD_RIVEST(ARRAY, K, NEWLEFT, NEWRIGHT)
-       END if
-       ! Pick a partition element from position "K".
-       T = ARRAY(K)
-       ! Initialize I and J to LEFT and RIGHT.
-       I = LEFT
-       J = RIGHT
-       ! Move the partition element to the front of the list.
-       CALL SWAP(ARRAY(LEFT), ARRAY(K))
-       ! Pre-swap the left and right elements (temporarily putting a
-       ! larger element on the left) before starting the partition loop.
-       IF (ARRAY(RIGHT) .GT. T) CALL SWAP(ARRAY(LEFT), ARRAY(RIGHT))
-       ! Now partition the elements about the pivot value "T".
-       DO WHILE (I .LT. J)
-          CALL SWAP(ARRAY(I), ARRAY(J))
-          I = I + 1
-          J = J - 1
-          DO WHILE (ARRAY(I) .LT. T) ; I = I + 1 ; END DO
-          DO WHILE (ARRAY(J) .GT. T) ; J = J - 1 ; END DO
-       END DO
-       ! Place the pivot element back into its appropriate place.
-       IF (ARRAY(LEFT) .EQ. T) THEN
-          CALL SWAP(ARRAY(LEFT), ARRAY(J))
-       ELSE
-          J = J + 1
-          CALL SWAP(ARRAY(J), ARRAY(RIGHT))
-       END IF
-       ! adjust left and right towards the boundaries of the subset
-       ! containing the (k - left + 1)th smallest element
-       IF (J .LE. K) LEFT = J + 1
-       IF (K .LE. J) RIGHT = J - 1
-    END DO
-  END SUBROUTINE FLOYD_RIVEST
-
-  ! ------------------------------------------------------------------
-  !                 Fast Select method (via TCH Lux)
-  ! ------------------------------------------------------------------
-
-
-  ! Given VALUES list of numbers, rearrange the elements of VALUES
-  ! such that the element at index K has rank K (holds its same
-  ! location as if all of VALUES were sorted).
-  ! 
-  ! This algorithm uses the same conceptual approach as Floyd-Rivest,
-  ! but instead a standard-deviation based selection of bounds for
-  ! recursion, a rank-based method is used to pick the subset of
-  ! values that is searched. This simplifies the code and improves
-  ! interpretability, while achieving the same tunable performance.
-  ! 
-  ! Arguments:
-  ! 
-  !   VALUES   --  A 1D array of real numbers.
-  !   K        --  A positive integer for the rank index about which
-  !                VALUES should be rearranged.
-  ! Optional:
-  ! 
-  !   DIVISOR  --  A positive integer >= 2 that represents the
-  !                division factor used for large VALUES arrays.
-  !   MAX_SIZE --  An integer >= DIVISOR that represents the largest
-  !                sized VALUES for which the worst-case pivot value
-  !                selection is tolerable. A worst-case pivot causes
-  !                O( SIZE(VALUES)^2 ) runtime. This value should be
-  !                determined heuristically based on compute hardware.
-  ! 
-  ! Output:
-  ! 
-  !   The elements of the array VALUES are rearranged such that the
-  !   element at position VALUES(K) is in the same location it would
-  !   be if all of VALUES were in sorted order. Also known as,
-  !   VALUES(K) has rank K.
-  ! 
-  RECURSIVE SUBROUTINE SELECT(VALUES, K, DIVISOR, MAX_SIZE)
-    ! Arguments
-    REAL(KIND=REAL64), INTENT(INOUT), DIMENSION(:) :: VALUES
-    INTEGER, INTENT(IN) :: K
-    INTEGER, INTENT(IN), OPTIONAL :: DIVISOR, MAX_SIZE
-    ! Locals
-    INTEGER :: LEFT, RIGHT, L, R, MS, D
-    REAL(KIND=REAL64) :: P
-    ! Initialize the divisor (for making subsets).
-    IF (PRESENT(DIVISOR)) THEN ; D = DIVISOR
-    ELSE IF (SIZE(VALUES) .GE. 2**23) THEN ; D = 2**5
-    ELSE IF (SIZE(VALUES) .GE. 2**20) THEN ; D = 2**3
-    ELSE                                   ; D = 2**2
-    END IF
-    ! Initialize the max size (before subsets are created).
-    IF (PRESENT(MAX_SIZE)) THEN ; MS = MAX_SIZE
-    ELSE                        ; MS = 2**10
-    END IF
-    ! Initialize LEFT and RIGHT to be the entire array.
-    LEFT = 1
-    RIGHT = SIZE(VALUES)
-    ! Loop until done finding the 'k'th element.
-    DO WHILE (LEFT .LT. RIGHT)
-       ! Use SELECT recursively to improve the quality of the
-       ! selected pivot value for large arrays.
-       IF (RIGHT - LEFT .GT. MS) THEN
-          ! Compute how many elements should be left and right of K
-          ! to maintain the same percentile in a subset.
-          L = K - K / D
-          R = L + (SIZE(VALUES) / D)
-          ! Perform fast select on an array half the size surrounding "k".
-          CALL SELECT(VALUES(L:R), K - L + 1, DIVISOR, MAX_SIZE)
-       END IF
-       ! Pick a partition element at position "K".
-       P = VALUES(K)
-       L = LEFT
-       R = RIGHT
-       ! Move the partition element to the front of the list.
-       CALL SWAP(VALUES(LEFT), VALUES(K))
-       ! Pre-swap the left and right elements (temporarily putting a
-       ! larger element on the left) before starting the partition loop.
-       IF (VALUES(RIGHT) .GT. P) CALL SWAP(VALUES(LEFT), VALUES(RIGHT))
-       ! Now partition the elements about the pivot value "T".
-       DO WHILE (L .LT. R)
-          CALL SWAP(VALUES(L), VALUES(R))
-          L = L + 1
-          R = R - 1
-          DO WHILE (VALUES(L) .LT. P) ; L = L + 1 ; END DO
-          DO WHILE (VALUES(R) .GT. P) ; R = R - 1 ; END DO
-       END DO
-       ! Place the pivot element back into its appropriate place.
-       IF (VALUES(LEFT) .EQ. P) THEN
-          CALL SWAP(VALUES(LEFT), VALUES(R))
-       ELSE
-          R = R + 1
-          CALL SWAP(VALUES(R), VALUES(RIGHT))
-       END IF
-       ! adjust left and right towards the boundaries of the subset
-       ! containing the (k - left + 1)th smallest element
-       IF (R .LE. K) LEFT = R + 1
-       IF (K .LE. R) RIGHT = R - 1
-    END DO
-  END SUBROUTINE SELECT
 
 
 END MODULE FAST_SELECT

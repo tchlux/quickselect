@@ -44,7 +44,8 @@
 
    * [Floyd-Rivest](https://en.wikipedia.org/wiki/Floyd–Rivest_algorithm)
      selection, which also exhibits `O(n)` runtime, but has a smaller
-     constant in practice (heuristically fewere compaarisons needed).
+     constant in practice than introselect (heuristically fewer
+     comparisons needed).
 
    * A novel method called *Fast Select* based on the F-R method, but
      with a simpler recursion condition and slightly faster
@@ -54,4 +55,4 @@
   F-R and FastSelect compete with the speed of `ndarray.partition`
   from the NumPy module for Python. For randomly ordered and fully
   sorted lists of most sizes (ranging from 100 to 1B elements) the F-R
-  and FastSelect methods are faster than NumPy.
+  and FastSelect methods are faster than NumPy (by up to 100%).
