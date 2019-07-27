@@ -1,7 +1,7 @@
 |             |                |
 |-------------|----------------|
-|**TITLE:**   | quickselect    |
-|**PURPOSE:** | A Fortran implementation of quickselect. |
+|**TITLE:**   | Fast Select    |
+|**PURPOSE:** | A Fortran implementation of multiple `select` algorithms. |
 |**AUTHOR:**  | Thomas C.H. Lux  |
 |**EMAIL:**   | tchlux@vt.edu |
 
@@ -17,40 +17,41 @@
 ## PYTHON USAGE:
 
     import fmodpy
-    qs = fmodpy.fimport("quickselect.f90")
+    fs = fmodpy.fimport("fast_select.f90")
     
     import numpy as np
     array = np.random.random(size=(100,))
     rank = 50
     
-    qs.select( array, rank )
+    fs.select( array, rank )
     print(f"Rank {rank} element:", array[rank])
     
     # ^^ Notice the array has been partially sorted in-place 
     #    about the rank-50 element.
 
 
-## HOW IT WORKS:
+## ABOUT:
 
   The `fmodpy` module automatically constructs the python interface to
-  the Fortran quickselect code. The code itself initially uses the
-  middle element of the array as a pivot and partitions, recursively
-  searching the remaining half of the array that will contain the
-  desired rank. If the convergence of this technique is too slow, the
-  pivot value is chosen by computing the median-of-medians (a value in
-  the array guaranteed to be between the 30th and 70th percentiles).
+  the Fortran fast select module. The code itself implements three
+  different strategies for performing the `select` operation (called
+  `partition` in NumPy). The three algorithms implemented are:
 
-  The median-of-medians computation is `O(log(n))`, however at each
-  step n will be shrinking by at least 30%, making the pivot
-  computation negligible. The dominating runtime will be the repeated
-  division of the array in half, with a final complexity of about
-  `O(n)`. In truth, the complexity is slightly larger, but only a
-  small amount that will not affect most applications.
+   * [Introselect](https://en.wikipedia.org/wiki/Introselect) -- a
+     selection method that starts off with [quickselect](https://en.wikipedia.org/wiki/Quickselect)
+     with a random pivot selection and transitions to [median of medians](https://en.wikipedia.org/wiki/Median_of_medians)
+     when poor convergence is observed to guarantee `O(n)` performance.
 
-  The steps of the algorithm look like:
+   * [Floyd-Rivest](https://en.wikipedia.org/wiki/Floyd–Rivest_algorithm)
+     selection, which also exhibits `O(n)` runtime, but has a smaller
+     constant in practice (heuristically fewere compaarisons needed).
 
-    - pick pivot value randomly
-    - partition array by pivot
-    - search the elements on the rank `k` side of the pivot
-    - if the size of the search space is not shrinking fast enough,
-      select pivot values with median-of-medians algorithm.
+   * A novel method called *Fast Select* based on the F-R method, but
+     with a simpler recursion condition and slightly faster
+     performance for some problems.
+
+  Each of these techniques has good worst-case performance, but only
+  F-R and FastSelect compete with the speed of `ndarray.partition`
+  from the NumPy module for Python. For randomly ordered and fully
+  sorted lists of most sizes (ranging from 100 to 1B elements) the F-R
+  and FastSelect methods are faster than NumPy.
